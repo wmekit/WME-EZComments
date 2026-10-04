@@ -562,6 +562,18 @@
 
         const root = createPane(tabPane, { id: 'ezc-settings' });
 
+        // Always render the settings pane in light mode. WMEKit UI adds kit-dark
+        // based on WME/OS theme (and re-adds it on theme changes), so strip it
+        // whenever it appears and give the pane its own light surface.
+        root.classList.remove('kit-dark');
+        new MutationObserver(() => {
+            if (root.classList.contains('kit-dark')) root.classList.remove('kit-dark');
+        }).observe(root, { attributes: true, attributeFilter: ['class'] });
+        root.style.background = '#fff';
+        root.style.colorScheme = 'light';
+        root.style.padding = '8px';
+        root.style.borderRadius = '8px';
+
         const div = (className, text) => {
             const node = document.createElement('div');
             if (className) node.className = className;
