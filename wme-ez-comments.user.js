@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME EZ Comments
 // @namespace    http://tampermonkey.net/
-// @version      2.6.0
+// @version      2.6.1
 // @description  Customizable quick comments for Waze Map Editor with placeholder support
 // @author       https://github.com/michaelrosstarr
 // @homepageURL  https://wmekit.com/wme-ez-comment
@@ -479,58 +479,35 @@
         }
     }
 
-    // Watches only the open update request panel; disconnected when it closes
-    let panelObserver = null;
-    let attachToken = 0;
-
-    // Find the open panel, add buttons, and watch it for re-renders (e.g. switching
-    // to the conversation tab). Does nothing when no panel is open.
-    function attachToPanel() {
-        const token = ++attachToken;
-        const deadline = performance.now() + 2000;
-
-        const tryAttach = () => {
-            if (token !== attachToken) return; // superseded by a newer call
-
-            const panel = document.querySelector('.mapUpdateRequest');
-            if (!panel) {
-                // The panel-opened event can fire before React renders the panel
-                if (performance.now() < deadline) requestAnimationFrame(tryAttach);
-                return;
-            }
-
-            ensureButtons(panel);
-
-            if (panelObserver) panelObserver.disconnect();
-            let scheduled = false;
-            const observer = new MutationObserver(() => {
-                if (scheduled) return;
-                scheduled = true;
-                requestAnimationFrame(() => {
-                    scheduled = false;
-                    if (!panel.isConnected) {
-                        observer.disconnect();
-                        if (panelObserver === observer) panelObserver = null;
-                        return;
-                    }
-                    ensureButtons(panel);
-                });
-            });
-            observer.observe(panel, { childList: true, subtree: true });
-            panelObserver = observer;
-        };
-
-        tryAttach();
+    // Always look up the current panel: WME replaces the panel element when
+    // switching between update requests, so a stale reference can't be reused
+    function checkPanel() {
+        const panel = document.querySelector('.mapUpdateRequest');
+        if (panel) ensureButtons(panel);
     }
 
     function setupPanelDetection() {
+        // Catches panel swaps and re-renders (e.g. switching to the conversation tab);
+        // throttled to one check per animation frame
+        let scheduled = false;
+        const observer = new MutationObserver(() => {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(() => {
+                scheduled = false;
+                checkPanel();
+            });
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // Fast path for when a panel opens
         sdk.Events.on({
             eventName: 'wme-update-request-panel-opened',
-            eventHandler: attachToPanel
+            eventHandler: checkPanel
         });
 
         // A panel may already be open (e.g. a permalink to an update request)
-        attachToPanel();
+        checkPanel();
     }
 
     // Returns a positive number if version a is newer than b
